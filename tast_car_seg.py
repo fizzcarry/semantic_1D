@@ -8,9 +8,9 @@ import torch.nn as nn
 import matplotlib.pyplot as plt 
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
-
-img_url = sorted(glob.glob("./segmentation_car/imgs/*"))
-mask_url = sorted(glob.glob("./segmentation_car/masks/*"))
+from SETR_tools import *
+img_url = sorted(glob.glob(r"D:\my_data\segmentation_car/imgs/*"))
+mask_url = sorted(glob.glob(r"D:\my_data\segmentation_car/masks/*"))
 # print(img_url)
 train_size = int(len(img_url) * 0.8)
 train_img_url = img_url[:train_size]
@@ -112,10 +112,12 @@ if __name__ == "__main__":
         for img, mask in tqdm(train_loader, total=len(train_loader)):
             optimizer.zero_grad()
             step += 1
+
             img = img.to(device)
             mask = mask.to(device)
 
             pred_img = model(img) ## pred_img (batch, len, channel, W, H)
+
             if out_channels == 1:
                 pred_img = pred_img.squeeze(1) # 去掉通道维度
 
@@ -123,8 +125,10 @@ if __name__ == "__main__":
             report_loss += loss.item()
             loss.backward()
             optimizer.step()
-
-            if step % 1000 == 0:
+            if step%400==0:
+                plot_RGB_image(img[0].cpu())
+                plot_grayscale_image(mask[0].cpu())
+                plot_grayscale_image(pred_img[0],binary=True)
                 dice = 0.0
                 n = 0
                 model.eval()

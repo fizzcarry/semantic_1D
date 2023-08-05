@@ -4,9 +4,9 @@ import torchvision
 import torch
 import torch.nn as nn 
 from torchvision import datasets, transforms
-import matplotlib.pyplot as plt 
+import matplotlib.pyplot as plt
 from tqdm import tqdm
-
+from SETR_tools import *
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("device is " + str(device))
 
@@ -65,11 +65,14 @@ if __name__ == "__main__":
 
     for in_data, label in tqdm(data_loader_train, total=len(data_loader_train)):
         batch_size = len(in_data)
+        # plot_grayscale_image(in_data[0][0])
+        # print(label[0])
         in_data = in_data.to(device)
         label = label.to(device)
         optimizer.zero_grad()
         step += 1
         out = model(in_data)
+        # print(out[0])
         loss = loss_func(out, label)
         loss.backward()
         optimizer.step()
