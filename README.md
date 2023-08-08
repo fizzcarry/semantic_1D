@@ -1,61 +1,45 @@
+该程序为SETR的1D版本，针对IMU信号采集的手势动作下进行分类和分割任务
+一、分类任务，使用vit
+1、先回忆样例中的大小，batch以64为例
+	样例一：
+embedding：
+64*1*28*28——（裁剪为7*7）——64*16*49——（全连接）——64*16*1024——（加相同大小位置编码）——64*16*1024
+encoding：
+64*16*1024——（多头注意力64*16*16*64）——64*16*1024，中间的全连接都是1024*1024，残差都是加，都改变大小，最终还是64*16*1024
+cls：
+取token的平均
+64*16*1024——（dim=1，求平均）——64*1024——（全连接分类）——64*10（类别数）
+	样例二：
+embedding：
+3*3*256*256——（裁剪为16*16）——3*256*768——（全连接）——3*256*1024——（加相同大小位置编码）——3*256*1024
+encoding：
+3*256*1024——（多头注意力64*16*256*64）——3*256*1024，中间的全连接都是1024*1024，残差都是加，都改变大小，最终还是3*256*1024
+decoding:
+3*256*1024——（调整1024变为通道数）——3*1024*16*16
+4层上采样：
+3*1024*16*16——3*512*32*32——3*256*64*64——3*128*128*128——3*64*256*256——（卷积改通道数）——3*1*256*256
+	
+	vit调整：
+embedding：
+16*6*2048——（裁剪为16）——16*128*96——（全连接）——16*128*2048——（加相同大小位置编码）——16*128*2048
+encoding：
+16*128*2048——（多头注意力64*16*16*64）——16*128*2048，中间的全连接都是2048*2048，残差都是加，都改变大小，最终还是16*128*2048
+cls：
+取token的平均
+16*128*2048——（dim=1，求平均）——64*1024——（全连接分类）——64*10（类别数）
+	SETR调整：
+embedding：
+n*6*1024——（裁剪为16）——n*64*96——（全连接）——n*64*1024——（加相同大小位置编码）——n*64*1024
+encoding：
+n*64*1024——（多头注意力n*16*64*64）——n*64*1024，中间的全连接都是1024*1024，残差都是加，都改变大小，最终还是n*64*1024
+decoding:
+n*64*1024——（调整1024变为通道数）——n*1024*64
+4层上采样：
+n*1024*64——n*512*128——3*256*256——3*128*512——3*64*1024——（卷积改通道数）——3*1*1024
 
-<img src="./SETR.png" width="800px"></img>
+2、修改
 
-## SETR - Pytorch
-
-Since the original paper (Rethinking Semantic Segmentation from a Sequence-to-Sequence Perspective with Transformers.) has no official code,I implemented SETR-Progressive UPsampling(SETR-PUP) using pytorch.
-
-Original paper: <a href="https://arxiv.org/abs/2012.15840">Rethinking Semantic Segmentation from a Sequence-to-Sequence Perspective with Transformers.</a>
-
-## Vit
-The Vit model is also implemented, and you can use it for image classification.
-
-## Usage SETR
-
-```python
-from SETR.transformer_seg import SETRModel
-import torch 
-
-if __name__ == "__main__":
-    net = SETRModel(patch_size=(32, 32), 
-                    in_channels=3, 
-                    out_channels=1, 
-                    hidden_size=1024, 
-                    num_hidden_layers=8, 
-                    num_attention_heads=16, 
-                    decode_features=[512, 256, 128, 64])
-    t1 = torch.rand(1, 3, 256, 256)
-    print("input: " + str(t1.shape))
-    
-    # print(net)
-    print("output: " + str(net(t1).shape))
-
-```
-If the output size is (1, 1, 256, 256), the code runs successfully.
-
-## Usage Vit
-```python 
-from SETR.transformer_seg import Vit
-import torch 
-
-if __name__ == "__main__":
-    model = Vit(patch_size=(7, 7), 
-                    in_channels=1, 
-                    out_class=10, 
-                    hidden_size=1024, 
-                    num_hidden_layers=1, 
-                    num_attention_heads=16)
-    print(model)
-    t1 = torch.rand(1, 1, 28, 28)
-    print("input: " + str(t1.shape))
-
-    print("output: " + str(model(t1).shape))
-```
-The output shape is (1, 10).
-
-## current examples
-1. task_mnist: The simplest example, using the Vit model to classify the minst dataset.
-2. task_car_seg: The example is sample segmentation task. data download: <a href="https://www.kaggle.com/c/carvana-image-masking-challenge/data">https://www.kaggle.com/c/carvana-image-masking-challenge/data</a>
-
-## more
-More examples will be updated later.
+长度为2048：1024全修改为2048
+patch_size=16
+sample_v与分块大小一致，
+方块大小和长度的关系，决定了用多少卷积恢复，16用4次，8用3次

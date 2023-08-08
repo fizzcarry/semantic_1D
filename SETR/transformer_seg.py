@@ -18,37 +18,32 @@ class Encoder2D(nn.Module):
         self.bert_model = TransModel2d(config)
         sample_rate = config.sample_rate
         sample_v = int(math.pow(2, sample_rate))
-        assert config.patch_size[0] * config.patch_size[1] * config.hidden_size % (sample_v**2) == 0, "不能除尽"
-        self.final_dense = nn.Linear(config.hidden_size, config.patch_size[0] * config.patch_size[1] * config.hidden_size // (sample_v**2))
+        assert config.patch_size * config.hidden_size % sample_v== 0, "不能除尽"
+        self.final_dense = nn.Linear(config.hidden_size, config.patch_size * config.hidden_size // sample_v)
         self.patch_size = config.patch_size
-        self.hh = self.patch_size[0] // sample_v
-        self.ww = self.patch_size[1] // sample_v
+        self.ll = self.patch_size // sample_v
 
         self.is_segmentation = is_segmentation
     def forward(self, x):
         ## x:(b, c, w, h)
-        b, c, h, w = x.shape
+        b, c, l = x.shape
         assert self.config.in_channels == c, "in_channels != 输入图像channel"
-        p1 = self.patch_size[0]
-        p2 = self.patch_size[1]
+        p = self.patch_size
 
-        if h % p1 != 0:
-            print("请重新输入img size 参数 必须整除")
+        if l % p != 0:
+            print("请重新输入len size 参数 必须整除")
             os._exit(0)
-        if w % p2 != 0:
-            print("请重新输入img size 参数 必须整除")
-            os._exit(0)
-        hh = h // p1 
-        ww = w // p2 
 
-        x = rearrange(x, 'b c (h p1) (w p2) -> b (h w) (p1 p2 c)', p1 = p1, p2 = p2)
+        ll = l // p
+
+        x = rearrange(x, 'b c (ll p)  -> b ll (p c)', p = p)
         
         encode_x = self.bert_model(x)[-1] # 取出来最后一层
         if not self.is_segmentation:
             return encode_x
 
         x = self.final_dense(encode_x)
-        x = rearrange(x, "b (h w) (p1 p2 c) -> b c (h p1) (w p2)", p1 = self.hh, p2 = self.ww, h = hh, w = ww, c = self.config.hidden_size)
+        x = rearrange(x, "b l (p c) -> b c (l p) ", p = self.ll, l = ll, c = self.config.hidden_size)
         return encode_x, x 
 
 
@@ -56,7 +51,7 @@ class PreTrainModel(nn.Module):
     def __init__(self, patch_size, 
                         in_channels, 
                         out_class, 
-                        hidden_size=1024, 
+                        hidden_size=2048,
                         num_hidden_layers=8, 
                         num_attention_heads=16,
                         decode_features=[512, 256, 128, 64]):
@@ -80,7 +75,7 @@ class Vit(nn.Module):
     def __init__(self, patch_size, 
                         in_channels, 
                         out_class, 
-                        hidden_size=1024, 
+                        hidden_size=2048,
                         num_hidden_layers=8, 
                         num_attention_heads=16,
                         sample_rate=4,
@@ -104,34 +99,34 @@ class Vit(nn.Module):
         return out 
 
 class Decoder2D(nn.Module):
-    def __init__(self, in_channels, out_channels, features=[512, 256, 128, 64]):
+    def __init__(self, in_channels, out_channels, features=[1024,512, 256, 128]):
         super().__init__()
         self.decoder_1 = nn.Sequential(
-                    nn.Conv2d(in_channels, features[0], 3, padding=1),
-                    nn.BatchNorm2d(features[0]),
+                    nn.Conv1d(in_channels, features[0], 3, padding=1),
+                    nn.BatchNorm1d(features[0]),
                     nn.ReLU(inplace=True),
-                    nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+                    nn.ConvTranspose1d(in_channels=features[0], out_channels=features[0], kernel_size=2, stride=2),
                 )
         self.decoder_2 = nn.Sequential(
-                    nn.Conv2d(features[0], features[1], 3, padding=1),
-                    nn.BatchNorm2d(features[1]),
+                    nn.Conv1d(features[0], features[1], 3, padding=1),
+                    nn.BatchNorm1d(features[1]),
                     nn.ReLU(inplace=True),
-                    nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+                    nn.ConvTranspose1d(in_channels=features[1], out_channels=features[1], kernel_size=2, stride=2)
                 )
         self.decoder_3 = nn.Sequential(
-            nn.Conv2d(features[1], features[2], 3, padding=1),
-            nn.BatchNorm2d(features[2]),
+            nn.Conv1d(features[1], features[2], 3, padding=1),
+            nn.BatchNorm1d(features[2]),
             nn.ReLU(inplace=True),
-            nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+            nn.ConvTranspose1d(in_channels=features[2], out_channels=features[2], kernel_size=2, stride=2)
         )
         self.decoder_4 = nn.Sequential(
-            nn.Conv2d(features[2], features[3], 3, padding=1),
-            nn.BatchNorm2d(features[3]),
+            nn.Conv1d(features[2], features[3], 3, padding=1),
+            nn.BatchNorm1d(features[3]),
             nn.ReLU(inplace=True),
-            nn.Upsample(scale_factor=2, mode="bilinear", align_corners=True)
+            nn.ConvTranspose1d(in_channels=features[3], out_channels=features[3], kernel_size=2, stride=2)
         )
 
-        self.final_out = nn.Conv2d(features[-1], out_channels, 3, padding=1)
+        self.final_out = nn.Conv1d(features[-1], out_channels, 3, padding=1)
 
     def forward(self, x):
         x = self.decoder_1(x)
@@ -142,10 +137,10 @@ class Decoder2D(nn.Module):
         return x
 
 class SETRModel(nn.Module):
-    def __init__(self, patch_size=(32, 32), 
+    def __init__(self, patch_size=16,
                         in_channels=3, 
                         out_channels=1, 
-                        hidden_size=1024, 
+                        hidden_size=2048,
                         num_hidden_layers=8, 
                         num_attention_heads=16,
                         decode_features=[512, 256, 128, 64],
