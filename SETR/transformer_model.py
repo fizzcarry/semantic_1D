@@ -31,7 +31,7 @@ class TransConfig(object):
         hidden_size=768,
         num_hidden_layers=8,
         num_attention_heads=6,
-        intermediate_size=1024,
+        intermediate_size=2048,
         hidden_act="gelu",
         hidden_dropout_prob=0.1,
         attention_probs_dropout_prob=0.1,
@@ -260,7 +260,7 @@ class TransEncoder(nn.Module):
 class InputDense2d(nn.Module):
     def __init__(self, config):
         super(InputDense2d, self).__init__()
-        self.dense = nn.Linear(config.patch_size[0] * config.patch_size[1] * config.in_channels, config.hidden_size)
+        self.dense = nn.Linear(config.patch_size * config.in_channels, config.hidden_size)
         self.transform_act_fn = ACT2FN[config.hidden_act]
         self.LayerNorm = TransLayerNorm(config.hidden_size, eps=config.layer_norm_eps)
 
